@@ -33,14 +33,12 @@ jobs:
           tar -czf dist/agent-sandbox.tar.gz \
             --exclude='.git' \
             --exclude='.github' \
-            --exclude='inspiration' \
             bin/ \
             lib/ \
             harnesses/ \
             install.sh \
             LICENSE \
-            README.md \
-            DESIGN.md
+            README.md
 
       - name: Generate checksums
         run: |
