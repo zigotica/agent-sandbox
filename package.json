@@ -1,6 +1,6 @@
 {
   "name": "@zigotica/agent-sandbox",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Run AI coding agents inside Docker containers for security isolation",
   "bin": {
     "agent-sandbox": "./bin/agent-sandbox"
@@ -26,6 +26,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/zigotica/agent-sandbox.git"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "bugs": {
     "url": "https://github.com/zigotica/agent-sandbox/issues"
