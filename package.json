@@ -1,0 +1,41 @@
+{
+  "name": "@zigotica/agent-sandbox",
+  "version": "0.1.0",
+  "description": "Run AI coding agents inside Docker containers for security isolation",
+  "bin": {
+    "agent-sandbox": "./bin/agent-sandbox"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "harnesses/"
+  ],
+  "keywords": [
+    "docker",
+    "sandbox",
+    "security",
+    "pi",
+    "opencode",
+    "ai",
+    "agent",
+    "container",
+    "isolation"
+  ],
+  "author": "Sergi Meseguer",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zigotica/agent-sandbox.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zigotica/agent-sandbox/issues"
+  },
+  "homepage": "https://github.com/zigotica/agent-sandbox",
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ]
+}

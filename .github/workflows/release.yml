@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Set version in package.json
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Create tarball
+        run: |
+          mkdir -p dist
+          tar -czf dist/agent-sandbox.tar.gz \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='inspiration' \
+            bin/ \
+            lib/ \
+            harnesses/ \
+            install.sh \
+            LICENSE \
+            README.md \
+            DESIGN.md
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum agent-sandbox.tar.gz > checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: ${{ steps.version.outputs.VERSION }}
+          generate_release_notes: true
+          files: |
+            dist/agent-sandbox.tar.gz
+            dist/checksums.txt
+
+      - name: Update npm
+        run: npm install -g npm@latest
+      - name: Publish to npm
+        run: npm publish
+
+  homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Compute version and SHA256
+        id: release-info
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TAG="${GITHUB_REF_NAME}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          curl -fsSL "https://github.com/zigotica/agent-sandbox/archive/refs/tags/${TAG}.tar.gz" -o agent-sandbox.tar.gz
+          SHA256=$(shasum -a 256 agent-sandbox.tar.gz | cut -d' ' -f1)
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tap repo
+        uses: actions/checkout@v6
+        with:
+          repository: zigotica/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+
+      - name: Update formula with release version and sha256
+        working-directory: tap
+        run: |
+          VERSION="${{ steps.release-info.outputs.version }}"
+          SHA256="${{ steps.release-info.outputs.sha256 }}"
+
+          # Patch the formula template from the main repo
+          mkdir -p Formula
+          cp "$GITHUB_WORKSPACE/Formula/agent-sandbox.rb" Formula/agent-sandbox.rb
+
+          sed -i "s|url \".*\"|url \"https://github.com/zigotica/agent-sandbox/archive/refs/tags/v${VERSION}.tar.gz\"|" Formula/agent-sandbox.rb
+          sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" Formula/agent-sandbox.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/agent-sandbox.rb
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "agent-sandbox v${VERSION}"
+          git push
