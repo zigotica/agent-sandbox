@@ -90,12 +90,8 @@ jobs:
           VERSION="${{ steps.release-info.outputs.version }}"
           SHA256="${{ steps.release-info.outputs.sha256 }}"
 
-          # Patch the formula template from the main repo
-          mkdir -p Formula
-          cp "$GITHUB_WORKSPACE/Formula/agent-sandbox.rb" Formula/agent-sandbox.rb
-
-          sed -i "s|url \".*\"|url \"https://github.com/zigotica/agent-sandbox/archive/refs/tags/v${VERSION}.tar.gz\"|" Formula/agent-sandbox.rb
-          sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" Formula/agent-sandbox.rb
+          sed -i "s|url.*|url \"https://github.com/zigotica/agent-sandbox/archive/refs/tags/v${VERSION}.tar.gz\"|" Formula/agent-sandbox.rb
+          sed -i "s|sha256.*|sha256 \"${SHA256}\"|" Formula/agent-sandbox.rb
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
