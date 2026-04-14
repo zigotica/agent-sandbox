@@ -212,6 +212,7 @@ auto_build_image() {
 # Build the Docker image for the current harness.
 # HARNESS_DOCKERFILE can be set by harness scripts to point to a custom Dockerfile.
 # If not set, falls back to harnesses/<name>/Dockerfile.
+# If the first argument is "--no-cache", the build will bypass Docker cache.
 build_image() {
     local harness_name="${HARNESS_NAME,,}"
 
@@ -240,6 +241,10 @@ build_image() {
     local build_flags=()
     if [[ "$(uname -s)" == "Linux" ]]; then
         build_flags+=("--network=host")
+    fi
+    # Add --no-cache if first argument is "--no-cache"
+    if [[ "${1:-}" == "--no-cache" ]]; then
+        build_flags+=("--no-cache")
     fi
 
     docker build "${build_flags[@]}" "${build_args[@]}" \

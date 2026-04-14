@@ -426,7 +426,7 @@ cmd_upgrade() {
 
     info "Rebuilding '${HARNESS_IMAGE}'..."
     docker image rm "${HARNESS_IMAGE}" 2>/dev/null || true
-    build_image
+    build_image --no-cache
     info "Image '${HARNESS_IMAGE}' rebuilt."
 }
 
