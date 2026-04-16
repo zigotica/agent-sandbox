@@ -287,6 +287,7 @@ run_container() {
         "--user" "$(id -u):$(id -g)"
         "--privileged"
         "--ipc=none"
+        "--net=host"
         "--volume" "${config_dir}:${HARNESS_CONFIG_MOUNT_POINT}"
         "--volume" "${data_dir}:${HARNESS_DATA_MOUNT_POINT}"
         "--volume" "${project_dir}:${project_dir}"
