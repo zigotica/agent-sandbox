@@ -1,18 +1,13 @@
-# Template: Dockerfile for a new harness
+# Template: Dockerfile for scaffolded harness
 #
-# This is a starting point. You'll need to:
-# 1. Replace <HARNESS_NAME> with your harness name (e.g. "cursor")
-# 2. Replace <npm-package-name> with the npm package name
-# 3. Adjust the base image if needed (this one is Chainguard Node.js)
-#
-# Place this file in the same directory as your harness script.
-# The build context is the harness directory itself (where this file lives).
+# Replace <HARNESS_NAME> and install step for your harness.
+# Adjust base image if needed.
+# Build context is harness directory itself.
 
 FROM cgr.dev/chainguard/node:latest-dev
 
 # Install runtime dependencies.
-# The -dev base image includes git and openssh-client — we remove them.
-# No git, no SSH. By design.
+# The -dev base image includes git and openssh-client — remove them.
 USER root
 RUN apk del --no-cache git openssh-client 2>/dev/null || true
 RUN apk add --no-cache \
@@ -24,7 +19,7 @@ RUN apk add --no-cache \
         socat
 
 # Install the agent.
-# Defaults to latest; pin a version in config.json with {"<name>": {"version": "1.0.0"}}
+# Defaults to latest; pin version in config.json with {"<name>": {"version": "1.0.0"}}
 # Option A: npm package
 ARG VERSION=
 RUN if [ -n "$VERSION" ]; then \
@@ -48,14 +43,14 @@ RUN if [ -n "$VERSION" ]; then \
 ENV PATH="/agent-config/bin:${PATH}"
 
 # /home/agentuser: world-writable (1777) so any runtime UID can write here.
-# /etc/passwd: world-writable so the entrypoint can add the runtime UID.
+# /etc/passwd: world-writable so entrypoint can add runtime UID.
 RUN mkdir -p /home/agentuser \
     && chmod 1777 /home/agentuser \
     && chmod a+w /etc/passwd
 
 ENV HOME=/home/agentuser
 
-# Copy the harness-specific entrypoint.
+# Copy harness-specific entrypoint.
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

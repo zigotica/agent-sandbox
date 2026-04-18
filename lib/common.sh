@@ -42,6 +42,69 @@ get_config_file() {
     echo "${CONFIG_FILE}"
 }
 
+get_harness_config_dir() {
+    local harness_name="$1"
+    echo "${CONFIG_FILE_DIR}/harnesses/${harness_name}"
+}
+
+get_harness_config_value() {
+    local harness_name="$1"
+    local field_name="$2"
+
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        echo ""
+        return
+    fi
+
+    jq -r --arg name "${harness_name}" --arg field "${field_name}" \
+        '.harnesses[$name][$field] // ""' "${CONFIG_FILE}" 2>/dev/null || true
+}
+
+json_array_from_bash_array() {
+    if [[ $# -eq 0 ]]; then
+        echo "[]"
+        return
+    fi
+
+    printf '%s\n' "$@" | jq -R . | jq -s .
+}
+
+write_harness_config_entry() {
+    local harness_name="$1"
+    local harness_dir="$2"
+    local config_dir="$3"
+    local data_dir="$4"
+    local image="$5"
+    local run_command="${6:-}"
+    local env_vars_json="${7:-[]}"
+    local version="${8:-}"
+
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        die "Config file not found: ${CONFIG_FILE}. Run 'agent-sandbox init' first."
+    fi
+
+    local tmp_file
+    tmp_file="$(mktemp)"
+    jq --arg name "${harness_name}" \
+       --arg harness_dir "${harness_dir}" \
+       --arg config_dir "${config_dir}" \
+       --arg data_dir "${data_dir}" \
+       --arg image "${image}" \
+       --arg run_command "${run_command}" \
+       --argjson env_vars "${env_vars_json}" \
+       --arg version "${version}" \
+       '.harnesses[$name] = {
+            name: $name,
+            harness_dir: $harness_dir,
+            config_dir: $config_dir,
+            data_dir: $data_dir,
+            image: $image,
+            run_command: $run_command,
+            env_vars: $env_vars,
+            version: $version
+        }' "${CONFIG_FILE}" > "${tmp_file}" && mv "${tmp_file}" "${CONFIG_FILE}"
+}
+
 # ─── Docker ───────────────────────────────────────────────────────────────────
 
 check_docker() {
@@ -63,81 +126,69 @@ get_project_dir() {
 # ─── Harness loading ──────────────────────────────────────────────────────────
 
 # Load a harness script and export its variables.
-# For built-in harnesses, looks in harnesses/<name>/<name>.sh.
-# For registered harnesses, looks up the script path from config.json.
+# Harness metadata lives in config.json, with copied harness files under
+# $HOME/.config/agent-sandbox/harnesses/<name>/.
 load_harness() {
     local harness_name="$1"
-    local harness_script=""
 
-    # Check if it's a built-in harness
-    local builtin_script="${AGENT_SANDBOX_DIR}/harnesses/${harness_name}/${harness_name}.sh"
-    if [[ -f "${builtin_script}" ]]; then
-        harness_script="${builtin_script}"
-    else
-        # Look up in config.json
-        if [[ ! -f "${CONFIG_FILE}" ]]; then
-            die "Config file not found. Run 'agent-sandbox init' first."
-        fi
-
-        local script_from_config
-        script_from_config="$(jq -r ".harnesses.\"${harness_name}\".script // \"\"" "${CONFIG_FILE}")"
-
-        if [[ -z "${script_from_config}" ]]; then
-            die "Unknown harness '${harness_name}'. Run 'agent-sandbox list' to see available harnesses."
-        fi
-
-        harness_script="${script_from_config}"
-
-        if [[ ! -f "${harness_script}" ]]; then
-            die "Harness script not found: ${harness_script}"
-        fi
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        die "Config file not found. Run 'agent-sandbox init' first."
     fi
 
-    # Source the harness script to get its defaults
+    local harness_dir
+    harness_dir="$(get_harness_config_value "${harness_name}" "harness_dir")"
+    if [[ -z "${harness_dir}" ]]; then
+        die "Unknown harness '${harness_name}'. Run 'agent-sandbox list' to see available harnesses."
+    fi
+
+    local script_path="${harness_dir}/${harness_name}.sh"
+    if [[ ! -f "${script_path}" ]]; then
+        die "Harness script not found: ${script_path}"
+    fi
+
     # shellcheck source=/dev/null
-    source "${harness_script}"
+    source "${script_path}"
 
-    # Override settings from config.json if present
-    if [[ -f "${CONFIG_FILE}" ]]; then
-        local image_override
-        image_override="$(jq -r ".harnesses.\"${harness_name}\".image // \"\"" "${CONFIG_FILE}" 2>/dev/null)" || image_override=""
-        if [[ -n "${image_override}" ]]; then
-            HARNESS_IMAGE="${image_override}"
-        fi
+    # Config is source of truth. Keep harness name stable by key.
+    HARNESS_NAME="${harness_name}"
 
-        local mount_override
-        mount_override="$(jq -r ".harnesses.\"${harness_name}\".mount_point // \"\"" "${CONFIG_FILE}" 2>/dev/null)" || mount_override=""
-        if [[ -n "${mount_override}" ]]; then
-            HARNESS_CONFIG_MOUNT_POINT="${mount_override}"
-        fi
-    fi
+    local config_value
+    config_value="$(get_harness_config_value "${harness_name}" "image")"
+    [[ -n "${config_value}" ]] && HARNESS_IMAGE="${config_value}"
+
+    config_value="$(get_harness_config_value "${harness_name}" "config_dir")"
+    [[ -n "${config_value}" ]] && HARNESS_DEFAULT_CONFIG_DIR="${config_value}"
+
+    config_value="$(get_harness_config_value "${harness_name}" "data_dir")"
+    [[ -n "${config_value}" ]] && HARNESS_DEFAULT_DATA_DIR="${config_value}"
+
+    HARNESS_ENV_VARS=()
+    local env_var
+    while IFS= read -r env_var; do
+        [[ -n "${env_var}" ]] || continue
+        HARNESS_ENV_VARS+=("${env_var}")
+    done < <(jq -r --arg name "${harness_name}" '.harnesses[$name].env_vars[]? // empty' "${CONFIG_FILE}" 2>/dev/null)
 }
 
 # ─── Config directory resolution ──────────────────────────────────────────────
 
 # Resolve the config directory for a harness.
 # Priority: env var > config.json > harness script default
-# All paths are stored and returned as absolute paths using $HOME.
 get_config_dir() {
     local harness_name="$1"
 
-    # 1. Env var override (highest priority)
     if [[ -n "${AGENT_SANDBOX_CONFIG_DIR:-}" ]]; then
         echo "${AGENT_SANDBOX_CONFIG_DIR}"
         return
     fi
 
-    # 2. config.json
-    if [[ -f "${CONFIG_FILE}" ]]; then
-        local config_dir_from_config
-        config_dir_from_config="$(jq -r ".harnesses.\"${harness_name}\".config_dir // \"\"" "${CONFIG_FILE}" 2>/dev/null)" || config_dir_from_config=""
-        if [[ -n "${config_dir_from_config}" ]]; then
-            echo "${config_dir_from_config}"
-            return
-        fi
+    local config_dir_from_config
+    config_dir_from_config="$(get_harness_config_value "${harness_name}" "config_dir")"
+    if [[ -n "${config_dir_from_config}" ]]; then
+        echo "${config_dir_from_config}"
+        return
     fi
 
-    # 3. Harness script default (HARNESS_DEFAULT_CONFIG_DIR must be set by load_harness)
     if [[ -n "${HARNESS_DEFAULT_CONFIG_DIR:-}" ]]; then
         echo "${HARNESS_DEFAULT_CONFIG_DIR}"
         return
@@ -151,23 +202,18 @@ get_config_dir() {
 get_data_dir() {
     local harness_name="$1"
 
-    # 1. Env var override (highest priority)
     if [[ -n "${AGENT_SANDBOX_DATA_DIR:-}" ]]; then
         echo "${AGENT_SANDBOX_DATA_DIR}"
         return
     fi
 
-    # 2. config.json
-    if [[ -f "${CONFIG_FILE}" ]]; then
-        local data_dir_from_config
-        data_dir_from_config="$(jq -r ".harnesses.\"${harness_name}\".data_dir // \"\"" "${CONFIG_FILE}" 2>/dev/null)" || data_dir_from_config=""
-        if [[ -n "${data_dir_from_config}" ]]; then
-            echo "${data_dir_from_config}"
-            return
-        fi
+    local data_dir_from_config
+    data_dir_from_config="$(get_harness_config_value "${harness_name}" "data_dir")"
+    if [[ -n "${data_dir_from_config}" ]]; then
+        echo "${data_dir_from_config}"
+        return
     fi
 
-    # 3. Harness script default (HARNESS_DEFAULT_DATA_DIR must be set by load_harness)
     if [[ -n "${HARNESS_DEFAULT_DATA_DIR:-}" ]]; then
         echo "${HARNESS_DEFAULT_DATA_DIR}"
         return
@@ -176,27 +222,35 @@ get_data_dir() {
     die "No data directory found for harness '${harness_name}'. Set it in config.json or export AGENT_SANDBOX_DATA_DIR."
 }
 
-# ─── Generic harness setting resolution ────────────────────────────────────────
+# ─── Harness asset copying ─────────────────────────────────────────────────────
 
-# Resolve any harness setting.
-# Priority: config.json > harness script default (already sourced)
-get_harness_setting() {
-    local harness_name="$1"
-    local setting_name="$2"
-    local default_value="${3:-}"
+copy_harness_assets() {
+    local source_script="$1"
+    local harness_name="$2"
+    local target_dir="$3"
 
-    # 1. config.json
-    if [[ -f "${CONFIG_FILE}" ]]; then
-        local value_from_config
-        value_from_config="$(jq -r ".harnesses.\"${harness_name}\".${setting_name} // \"\"" "${CONFIG_FILE}" 2>/dev/null)" || value_from_config=""
-        if [[ -n "${value_from_config}" ]]; then
-            echo "${value_from_config}"
-            return
-        fi
+    local source_dir
+    source_dir="$(cd "$(dirname "${source_script}")" && pwd)"
+
+    local source_dockerfile="${source_dir}/Dockerfile"
+    local source_entrypoint="${source_dir}/entrypoint.sh"
+
+    if [[ ! -f "${source_script}" ]]; then
+        die "Harness script not found: ${source_script}"
+    fi
+    if [[ ! -f "${source_dockerfile}" ]]; then
+        die "Dockerfile not found for harness '${harness_name}': ${source_dockerfile}"
+    fi
+    if [[ ! -f "${source_entrypoint}" ]]; then
+        die "Entrypoint not found for harness '${harness_name}': ${source_entrypoint}"
     fi
 
-    # 2. Default
-    echo "${default_value}"
+    rm -rf "${target_dir}"
+    mkdir -p "${target_dir}"
+    cp "${source_script}" "${target_dir}/${harness_name}.sh"
+    cp "${source_dockerfile}" "${target_dir}/Dockerfile"
+    cp "${source_entrypoint}" "${target_dir}/entrypoint.sh"
+    chmod +x "${target_dir}/${harness_name}.sh" "${target_dir}/entrypoint.sh"
 }
 
 # ─── Image building ──────────────────────────────────────────────────────────
@@ -216,33 +270,28 @@ auto_build_image() {
 build_image() {
     local harness_name="${HARNESS_NAME,,}"
 
-    # Determine Dockerfile path
     local dockerfile="${HARNESS_DOCKERFILE:-${AGENT_SANDBOX_DIR}/harnesses/${harness_name}/Dockerfile}"
 
     if [[ ! -f "${dockerfile}" ]]; then
         die "Dockerfile not found for harness '${HARNESS_NAME}': ${dockerfile}"
     fi
 
-    # Build context is the directory containing the Dockerfile.
     local build_context
     build_context="$(cd "$(dirname "${dockerfile}")" && pwd)"
 
-    # Check for version pin in config.json
     local build_args=()
     if [[ -f "${CONFIG_FILE}" ]]; then
         local pinned_version
-        pinned_version="$(jq -r ".harnesses.\"${harness_name}\".version // \"\"" "${CONFIG_FILE}" 2>/dev/null)" || pinned_version=""
+        pinned_version="$(jq -r --arg name "${harness_name}" '.harnesses[$name].version // ""' "${CONFIG_FILE}" 2>/dev/null)" || pinned_version=""
         if [[ -n "${pinned_version}" ]]; then
             build_args+=("--build-arg" "VERSION=${pinned_version}")
         fi
     fi
 
-    # Linux needs --network=host for DNS during build
     local build_flags=()
     if [[ "$(uname -s)" == "Linux" ]]; then
         build_flags+=("--network=host")
     fi
-    # Add --no-cache if first argument is "--no-cache"
     if [[ "${1:-}" == "--no-cache" ]]; then
         build_flags+=("--no-cache")
     fi
@@ -261,8 +310,6 @@ build_image() {
 run_container() {
     check_docker
 
-    # HARNESS_NAME is set by load_harness() which is called before this.
-    # Use it to resolve the config and data directories.
     local harness_name="${HARNESS_NAME,,}"
 
     local config_dir
@@ -271,17 +318,14 @@ run_container() {
     local data_dir
     data_dir="$(get_data_dir "${harness_name}")"
 
-    # Ensure directories exist
     mkdir -p "${config_dir}"
     mkdir -p "${data_dir}"
 
-    # Auto-build the image if needed
     auto_build_image
 
     local project_dir
     project_dir="$(get_project_dir)"
 
-    # Build Docker flags
     local docker_flags=(
         "--rm"
         "--user" "$(id -u):$(id -g)"
@@ -298,8 +342,7 @@ run_container() {
         "--env" "COLORTERM=${COLORTERM:-truecolor}"
     )
 
-    # Pass through harness-specific env vars
-    if [[ ${#HARNESS_ENV_VARS[@]} -gt 0 ]]; then
+    if declare -p HARNESS_ENV_VARS > /dev/null 2>&1 && [[ ${#HARNESS_ENV_VARS[@]} -gt 0 ]]; then
         local var
         for var in "${HARNESS_ENV_VARS[@]}"; do
             if [[ -n "${!var:-}" ]]; then
@@ -308,17 +351,14 @@ run_container() {
         done
     fi
 
-    # Extra volumes and flags (set by cmd_test or other callers before invoking run_container)
-    if declare -p EXTRA_DOCKER_VOLUMES &>/dev/null && [[ ${#EXTRA_DOCKER_VOLUMES[@]} -gt 0 ]]; then
+    if declare -p EXTRA_DOCKER_VOLUMES > /dev/null 2>&1 && [[ ${#EXTRA_DOCKER_VOLUMES[@]} -gt 0 ]]; then
         docker_flags+=("${EXTRA_DOCKER_VOLUMES[@]}")
     fi
 
-    # Entrypoint override (set by cmd_test or other callers)
     if [[ -n "${ENTRYPOINT_OVERRIDE:-}" ]]; then
         docker_flags+=("--entrypoint" "${ENTRYPOINT_OVERRIDE}")
     fi
 
-    # Harness-specific Docker flags (via get_docker_flags function if defined)
     if declare -f get_docker_flags > /dev/null 2>&1; then
         local extra_flags
         extra_flags="$(get_docker_flags)"
@@ -328,18 +368,15 @@ run_container() {
         fi
     fi
 
-    # Interactive / TTY
     docker_flags+=("--interactive")
     if [[ -t 0 ]] && [[ -t 1 ]]; then
         docker_flags+=("--tty")
     fi
 
-    # Tmux passthrough
     if [[ -n "${TMUX:-}" ]]; then
         tmux set-option -p allow-passthrough on 2>/dev/null || true
         trap 'tmux set-option -p allow-passthrough off 2>/dev/null || true' EXIT
     fi
 
-    # Run the container
     docker run "${docker_flags[@]}" "${HARNESS_IMAGE}" "$@"
 }

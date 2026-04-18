@@ -152,18 +152,35 @@ agent-sandbox doctor
 
 ## Configuration
 
+Breaking change: config/layout now lives under `$HOME/.config/agent-sandbox/`. If upgrading from older version, rerun `agent-sandbox init` to recreate harness files and config.
+
 Config file: `$HOME/.config/agent-sandbox/config.json` (created by `agent-sandbox init`)
+
+`agent-sandbox init` also copies built-in harness files into `$HOME/.config/agent-sandbox/harnesses/<name>/`.
+Custom harnesses registered with `agent-sandbox register` are scaffolded there too.
 
 ```json
 {
   "harnesses": {
     "opencode": {
+      "name": "opencode",
+      "harness_dir": "/Users/you/.config/agent-sandbox/harnesses/opencode",
       "config_dir": "/Users/you/.config/opencode",
-      "data_dir": "/Users/you/.local/share/opencode"
+      "data_dir": "/Users/you/.local/share/opencode",
+      "image": "agent-sandbox:opencode",
+      "run_command": "opencode",
+      "env_vars": [],
+      "version": ""
     },
     "pi": {
+      "name": "pi",
+      "harness_dir": "/Users/you/.config/agent-sandbox/harnesses/pi",
       "config_dir": "/Users/you/.pi",
-      "data_dir": "/Users/you/.pi"
+      "data_dir": "/Users/you/.pi",
+      "image": "agent-sandbox:pi",
+      "run_command": "pi",
+      "env_vars": ["ANTHROPIC_API_KEY"],
+      "version": ""
     }
   }
 }
@@ -176,13 +193,9 @@ By default, harnesses install the latest version of the agent on build. To pin a
 ```json
 {
   "harnesses": {
-    "opencode": {
-      "config_dir": "/Users/you/.config/opencode",
-      "data_dir": "/Users/you/.local/share/opencode"
-    },
+    ...
     "pi": {
-      "config_dir": "/Users/you/.pi",
-      "data_dir": "/Users/you/.pi",
+      ...
       "version": "0.66.1"
     }
   }
@@ -214,7 +227,9 @@ agent-sandbox opencode             # Run opencode in a sandboxed container
 agent-sandbox opencode upgrade     # Rebuild image
 
 # Register a custom harness
-agent-sandbox register aider /path/to/aider/aider.sh --config-dir "$HOME/.aider" --data-dir "$HOME/.local/share/aider"
+agent-sandbox register aider
+
+# Unregister a custom harness
 agent-sandbox unregister aider
 ```
 
@@ -236,14 +251,14 @@ cat README.md | agent-sandbox pi -p "summarize this"
 
 ### pi
 
-| Setting    | Value                        |
-| ---------- | ---------------------------- |
-| Config dir | `$HOME/.pi`                  |
-| Data dir   | `$HOME/.pi` (same as config) |
-| Image      | `agent-sandbox:pi`           |
-| Dockerfile | `harnesses/pi/Dockerfile`    |
+| Setting    | Value                                                 |
+| ---------- | ----------------------------------------------------- |
+| Config dir | `$HOME/.pi`                                           |
+| Data dir   | `$HOME/.pi` (same as config)                          |
+| Image      | `agent-sandbox:pi`                                    |
+| Dockerfile | `$HOME/.config/agent-sandbox/harnesses/pi/Dockerfile` |
 
-Based on Chainguard Node.js. Includes: Node.js, curl, tmux, ripgrep, bubblewrap, socat, pi. No git or SSH - by design.
+Copied from repo on `agent-sandbox init`. Based on Chainguard Node.js. Includes: Node.js, curl, tmux, ripgrep, bubblewrap, socat, pi. No git or SSH - by design.
 
 Installs the latest version by default. Pin a specific version in config.json if needed.
 
@@ -256,14 +271,14 @@ Environment variables passed through:
 
 ### opencode
 
-| Setting    | Value                           |
-| ---------- | ------------------------------- |
-| Config dir | `$HOME/.config/opencode`        |
-| Data dir   | `$HOME/.local/share/opencode`   |
-| Image      | `agent-sandbox:opencode`        |
-| Dockerfile | `harnesses/opencode/Dockerfile` |
+| Setting    | Value                                                       |
+| ---------- | ----------------------------------------------------------- |
+| Config dir | `$HOME/.config/opencode`                                    |
+| Data dir   | `$HOME/.local/share/opencode`                               |
+| Image      | `agent-sandbox:opencode`                                    |
+| Dockerfile | `$HOME/.config/agent-sandbox/harnesses/opencode/Dockerfile` |
 
-Based on Chainguard Node.js. Includes: Node.js, curl, tmux, ripgrep, bubblewrap, socat, opencode-ai (via npm). No git or SSH - by design.
+Copied from repo on `agent-sandbox init`. Based on Chainguard Node.js. Includes: Node.js, curl, tmux, ripgrep, bubblewrap, socat, opencode-ai (via npm). No git or SSH - by design.
 
 Installs the latest version by default. Pin a specific version in config.json if needed.
 
@@ -276,22 +291,34 @@ Opencode's config (theme, models, `tui.json`) persists in `$HOME/.config/opencod
 
 ## Adding a Custom Harness
 
-```bash
-# 1. Create a harness directory with three files:
-#    myagent/
-#    ├── myagent.sh         # Harness script (see harnesses/template/template.sh for reference)
-#    ├── Dockerfile         # Container image definition
-#    └── entrypoint.sh      # Container entrypoint
-#
-# 2. Register it:
-agent-sandbox register myagent /path/to/myagent/myagent.sh --config-dir $HOME/.config/myagent --data-dir $HOME/.local/share/myagent
+1. Install app on host first so you know correct config/data dirs and can populate initial config files. `agent-sandbox register` will later mount those host dirs into container.
+2. Scaffold harness:
 
-# 3. Build and run:
+```bash
+agent-sandbox register myagent
+```
+
+3. Answer prompts:
+
+```bash
+#    - config dir
+#    - data dir (can be different, i.e. opencode uses ~/.local/share/opencode)
+#    - install command
+#    - run command
+#    - image tag (optional, defaults to agent-sandbox:<name>)
+```
+
+4. Build and run:
+
+```bash
 agent-sandbox myagent build
 agent-sandbox myagent
 ```
 
-Each harness script must define:
+`agent-sandbox register` scaffolds harness files under `$HOME/.config/agent-sandbox/harnesses/myagent/`, fills them with proper names/defaults, and stores absolute paths in config.json.
+If config/data dir uses `~`, tool converts it to `$HOME` in generated harness files and to absolute path in config.json.
+
+Each harness script should define:
 
 - `HARNESS_NAME` — display name (used in CLI commands like `agent-sandbox cursor`)
 - `HARNESS_IMAGE` — Docker image tag
@@ -299,10 +326,14 @@ Each harness script must define:
 - `HARNESS_DEFAULT_DATA_DIR` — default data directory
 - `HARNESS_CONFIG_MOUNT_POINT` — where config mounts in container (default: `/agent-config`)
 - `HARNESS_DATA_MOUNT_POINT` — where data mounts in container (default: `/agent-data`)
-- `HARNESS_DOCKERFILE` — path to Dockerfile (defaults to `harnesses/<name>/Dockerfile`)
+- `HARNESS_DOCKERFILE` — path to Dockerfile (defaults to same folder as script)
 - `HARNESS_ENV_VARS` — array of environment variable names to pass through
 
-Version pinning works for custom harnesses too — add `"version": "1.2.3"` in config.json and the Dockerfile receives it as `--build-arg VERSION=1.2.3`.
+Dockerfile install step is harness-specific; it may use npm, curl|bash, package manager, or binary download.
+Scaffold runs install with `HOME=/home/agentuser`, so user-level installers land in `/home/agentuser/.local/bin` and keep sibling files intact.
+Some installers expect `node` or `npm` in `/usr/local/bin`; scaffold symlinks them from `/usr/bin` when needed.
+
+Version pinning works for custom harnesses too — add `"version": "1.2.3"` in config.json and Dockerfile receives it as `--build-arg VERSION=1.2.3`.
 
 ## Security
 
@@ -390,7 +421,20 @@ User-created files (not in the repo):
 
 ```
 $HOME/.config/agent-sandbox/
-└── config.json                     # User configuration (created by agent-sandbox init)
+├── config.json                     # User configuration (created by agent-sandbox init)
+└── harnesses/
+    ├── pi/
+    │   ├── pi.sh
+    │   ├── Dockerfile
+    │   └── entrypoint.sh
+    ├── opencode/
+    │   ├── opencode.sh
+    │   ├── Dockerfile
+    │   └── entrypoint.sh
+    └── <custom>/
+        ├── <custom>.sh
+        ├── Dockerfile
+        └── entrypoint.sh
 ```
 
 ## Troubleshooting
