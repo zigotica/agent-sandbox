@@ -17,9 +17,9 @@ RUN apk add --no-cache \
 # Defaults to latest; pin a version in config.json with {"pi": {"version": "0.66.1"}}
 ARG VERSION=
 RUN if [ -n "$VERSION" ]; then \
-        npm install -g "@mariozechner/pi-coding-agent@${VERSION}"; \
+        npm install -g "@earendil-works/pi-coding-agent@${VERSION}"; \
     else \
-        npm install -g "@mariozechner/pi-coding-agent"; \
+        npm install -g "@earendil-works/pi-coding-agent"; \
     fi
 
 # Prepend extension binaries (host-mounted via /agent-config/agent).
