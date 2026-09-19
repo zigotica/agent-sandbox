@@ -373,10 +373,5 @@ run_container() {
         docker_flags+=("--tty")
     fi
 
-    if [[ -n "${TMUX:-}" ]]; then
-        tmux set-option -p allow-passthrough on 2>/dev/null || true
-        trap 'tmux set-option -p allow-passthrough off 2>/dev/null || true' EXIT
-    fi
-
     docker run "${docker_flags[@]}" "${HARNESS_IMAGE}" "$@"
 }

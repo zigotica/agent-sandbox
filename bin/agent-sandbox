@@ -155,10 +155,12 @@ RUN apk del --no-cache git openssh-client 2>/dev/null || true
 RUN apk add --no-cache \
         curl \
         ca-certificates \
-        tmux \
         ripgrep \
         bubblewrap \
         socat
+
+RUN export HERDR_INSTALL_DIR=/usr/local/bin; \
+    curl -fsSL https://herdr.dev/install.sh | sh
 
 RUN if [ -x /usr/bin/node ] && [ ! -e /usr/local/bin/node ]; then \
         ln -s /usr/bin/node /usr/local/bin/node; \
@@ -202,7 +204,29 @@ export TMPDIR=/tmp
 
 mkdir -p "\${XDG_CONFIG_HOME}" "\${XDG_CACHE_HOME}" "\${XDG_DATA_HOME}" "\${XDG_RUNTIME_DIR}"
 
-exec ${run_cmd} "\$@"
+# Run configured command directly unless Herdr was explicitly requested.
+if [ "\${1:-}" != "--herdr" ]; then
+    exec ${run_cmd} "\$@"
+fi
+shift
+
+# Herdr launches its initial pane from \$SHELL; it does not accept a command
+# as a positional argument. Generate a shell executable that starts complete
+# configured command while preserving remaining runtime arguments.
+AGENT_LAUNCHER="\${XDG_RUNTIME_DIR}/agent-shell"
+{
+    printf '#!/bin/sh\\nexec ${run_cmd}'
+    for arg in "\$@"; do
+        escaped=\$(printf '%s' "\$arg" | sed "s/'/'\\\\\\\\''/g")
+        printf " '%s'" "\$escaped"
+    done
+    printf '\\n'
+} > "\${AGENT_LAUNCHER}"
+chmod +x "\${AGENT_LAUNCHER}"
+export SHELL="\${AGENT_LAUNCHER}"
+
+# Launch Herdr using its default persistent-session behavior.
+exec herdr
 EOF
 
     chmod +x "${target_dir}/${harness_name}.sh" "${target_dir}/entrypoint.sh"

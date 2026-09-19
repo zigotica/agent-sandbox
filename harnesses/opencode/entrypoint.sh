@@ -33,4 +33,26 @@ ln -sf /agent-data "${XDG_DATA_HOME}/opencode"
 mkdir -p /agent-config/bin
 echo "prefix=/agent-config" > /home/agentuser/.npmrc
 
-exec opencode "$@"
+# Run opencode directly unless Herdr was explicitly requested.
+if [ "${1:-}" != "--herdr" ]; then
+    exec opencode "$@"
+fi
+shift
+
+# Herdr launches its initial pane from $SHELL; it does not accept a command
+# as a positional argument. Generate a shell executable that starts opencode
+# while preserving remaining arguments passed through agent-sandbox.
+OPENCODE_LAUNCHER="${XDG_RUNTIME_DIR}/opencode-shell"
+{
+    printf '#!/bin/sh\nexec opencode'
+    for arg in "$@"; do
+        escaped=$(printf '%s' "$arg" | sed "s/'/'\\\\''/g")
+        printf " '%s'" "$escaped"
+    done
+    printf '\n'
+} > "${OPENCODE_LAUNCHER}"
+chmod +x "${OPENCODE_LAUNCHER}"
+export SHELL="${OPENCODE_LAUNCHER}"
+
+# Launch Herdr using its default persistent-session behavior.
+exec herdr

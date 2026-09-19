@@ -8,10 +8,13 @@ RUN apk del --no-cache git openssh-client 2>/dev/null || true
 RUN apk add --no-cache \
         curl \
         ca-certificates \
-        tmux \
         ripgrep \
         bubblewrap \
         socat
+
+# Install herdr globally so it remains available to the runtime user.
+RUN export HERDR_INSTALL_DIR=/usr/local/bin; \
+    curl -fsSL https://herdr.dev/install.sh | sh
 
 # Install opencode via npm.
 # Defaults to latest; pin a version in config.json with {"opencode": {"version": "1.4.3"}}

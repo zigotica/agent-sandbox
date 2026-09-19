@@ -29,4 +29,26 @@ mkdir -p "${XDG_CONFIG_HOME}" "${XDG_CACHE_HOME}" "${XDG_RUNTIME_DIR}"
 mkdir -p /agent-config/agent/npm-global
 echo "prefix=/agent-config/agent/npm-global" > /home/agentuser/.npmrc
 
-exec pi "$@"
+# Run pi directly unless Herdr was explicitly requested.
+if [ "${1:-}" != "--herdr" ]; then
+    exec pi "$@"
+fi
+shift
+
+# Herdr launches its initial pane from $SHELL; it does not accept a command
+# as a positional argument. Generate a shell executable that starts pi while
+# preserving remaining arguments passed through agent-sandbox.
+PI_LAUNCHER="${XDG_RUNTIME_DIR}/pi-shell"
+{
+    printf '#!/bin/sh\nexec pi'
+    for arg in "$@"; do
+        escaped=$(printf '%s' "$arg" | sed "s/'/'\\\\''/g")
+        printf " '%s'" "$escaped"
+    done
+    printf '\n'
+} > "${PI_LAUNCHER}"
+chmod +x "${PI_LAUNCHER}"
+export SHELL="${PI_LAUNCHER}"
+
+# Launch Herdr using its default persistent-session behavior.
+exec herdr

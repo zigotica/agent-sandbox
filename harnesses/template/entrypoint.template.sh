@@ -36,5 +36,26 @@ mkdir -p "${XDG_CONFIG_HOME}" "${XDG_CACHE_HOME}" "${XDG_DATA_HOME}" "${XDG_RUNT
 # If agent uses one dir for everything, point it at mount directly.
 # ──────────────────────────────────────────────────────────────────────
 
-# Replace "<agent-binary>" with agent command name.
-exec <agent-binary> "$@"
+# Run <agent-binary> directly unless Herdr was explicitly requested.
+if [ "${1:-}" != "--herdr" ]; then
+    exec <agent-binary> "$@"
+fi
+shift
+
+# Herdr launches its initial pane from $SHELL; it does not accept a command
+# as a positional argument. Replace <agent-binary> and generate a shell
+# executable that preserves remaining arguments passed through agent-sandbox.
+AGENT_LAUNCHER="${XDG_RUNTIME_DIR}/agent-shell"
+{
+    printf '#!/bin/sh\nexec <agent-binary>'
+    for arg in "$@"; do
+        escaped=$(printf '%s' "$arg" | sed "s/'/'\\\\''/g")
+        printf " '%s'" "$escaped"
+    done
+    printf '\n'
+} > "${AGENT_LAUNCHER}"
+chmod +x "${AGENT_LAUNCHER}"
+export SHELL="${AGENT_LAUNCHER}"
+
+# Launch Herdr using its default persistent-session behavior.
+exec herdr

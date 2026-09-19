@@ -220,10 +220,12 @@ agent-sandbox test pi              # Run security verification tests
 
 agent-sandbox pi build             # Build (or rebuild) the pi Docker image
 agent-sandbox pi                   # Run pi in a sandboxed container
+agent-sandbox pi --herdr           # Run pi through Herdr
 agent-sandbox pi upgrade           # Rebuild image
 
 agent-sandbox opencode build       # Build (or rebuild) the opencode Docker image
 agent-sandbox opencode             # Run opencode in a sandboxed container
+agent-sandbox opencode --herdr     # Run opencode through Herdr
 agent-sandbox opencode upgrade     # Rebuild image
 
 # Register a custom harness
@@ -247,6 +249,16 @@ Pipe input:
 cat README.md | agent-sandbox pi -p "summarize this"
 ```
 
+Harnesses run agents directly by default. Pass `--herdr` as first harness argument to opt into Herdr:
+
+```bash
+agent-sandbox pi --herdr
+agent-sandbox opencode --herdr
+agent-sandbox myagent --herdr
+```
+
+For registered custom harnesses, `--herdr` preserves configured run command and fixed arguments; all later arguments go to agent unchanged.
+
 ## Built-in Harnesses
 
 ### pi
@@ -258,7 +270,7 @@ cat README.md | agent-sandbox pi -p "summarize this"
 | Image      | `agent-sandbox:pi`                                    |
 | Dockerfile | `$HOME/.config/agent-sandbox/harnesses/pi/Dockerfile` |
 
-Copied from repo on `agent-sandbox init`. Based on Chainguard Node.js. Includes: Node.js, curl, tmux, ripgrep, bubblewrap, socat, pi. No git or SSH - by design.
+Copied from repo on `agent-sandbox init`. Based on Chainguard Node.js. Includes: Node.js, curl, Herdr, ripgrep, bubblewrap, socat, pi. No git or SSH - by design.
 
 Installs the latest version by default. Pin a specific version in config.json if needed.
 
@@ -278,7 +290,7 @@ Environment variables passed through:
 | Image      | `agent-sandbox:opencode`                                    |
 | Dockerfile | `$HOME/.config/agent-sandbox/harnesses/opencode/Dockerfile` |
 
-Copied from repo on `agent-sandbox init`. Based on Chainguard Node.js. Includes: Node.js, curl, tmux, ripgrep, bubblewrap, socat, opencode-ai (via npm). No git or SSH - by design.
+Copied from repo on `agent-sandbox init`. Based on Chainguard Node.js. Includes: Node.js, curl, Herdr, ripgrep, bubblewrap, socat, opencode-ai (via npm). No git or SSH - by design.
 
 Installs the latest version by default. Pin a specific version in config.json if needed.
 
