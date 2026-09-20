@@ -40,7 +40,7 @@ shift
 # preserving remaining arguments passed through agent-sandbox.
 PI_LAUNCHER="${XDG_RUNTIME_DIR}/pi-shell"
 {
-    printf '#!/bin/sh\nexec pi'
+    printf '#!/bin/sh\nif [ "${PI_SUBAGENT_SHELL:-}" = "1" ]; then\n    exec /bin/sh\nfi\nexec pi'
     for arg in "$@"; do
         escaped=$(printf '%s' "$arg" | sed "s/'/'\\\\''/g")
         printf " '%s'" "$escaped"

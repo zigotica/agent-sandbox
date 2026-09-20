@@ -632,6 +632,18 @@ cmd_upgrade() {
         die "Usage: agent-sandbox <harness> upgrade"
     fi
 
+    # Refresh built-in harness assets from the running installation/checkout
+    # before rebuilding. Otherwise upgrade keeps rebuilding the stale copies
+    # created by an earlier `init` and cannot deliver Dockerfile or entrypoint
+    # changes from a newly installed version.
+    local bundled_harness="${AGENT_SANDBOX_DIR}/harnesses/${harness_name}/${harness_name}.sh"
+    if [[ -f "${bundled_harness}" ]]; then
+        copy_harness_assets \
+            "${bundled_harness}" \
+            "${harness_name}" \
+            "$(get_harness_config_dir "${harness_name}")"
+    fi
+
     load_harness "${harness_name}"
 
     if [[ -f "${CONFIG_FILE}" ]]; then

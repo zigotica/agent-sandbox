@@ -259,6 +259,10 @@ agent-sandbox myagent --herdr
 
 For registered custom harnesses, `--herdr` preserves configured run command and fixed arguments; all later arguments go to agent unchanged.
 
+The built-in Pi launcher also supports `pi-subagent`: panes created by the extension with `PI_SUBAGENT_SHELL=1` start a plain shell instead of a second interactive Pi session, allowing the extension to run and monitor its JSON-mode worker in that pane. Normal Herdr panes keep launching Pi as before.
+
+`agent-sandbox <harness> upgrade` refreshes built-in harness files from the running installation or source checkout before rebuilding the image, so Dockerfile and entrypoint changes do not require another `init`.
+
 ## Built-in Harnesses
 
 ### pi
