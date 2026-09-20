@@ -252,14 +252,14 @@ prepare_node_dependencies() {
         dependency_roots+=("${package_root}/node_modules")
     done
     if ! docker run --rm \
+        --interactive \
         --user "0:0" \
         --volume "${NODE_PROJECT_DIR}:${NODE_PROJECT_DIR}" \
-        --volume "${volume_init_script}:/usr/local/bin/agent-sandbox-node-volume-init:ro" \
         "${NODE_DEPENDENCY_DOCKER_FLAGS[@]}" \
         --entrypoint /bin/sh \
         "${image}" \
-        /usr/local/bin/agent-sandbox-node-volume-init \
-        "$(id -u)" "$(id -g)" "${dependency_roots[@]}"; then
+        -s -- "$(id -u)" "$(id -g)" "${dependency_roots[@]}" \
+        < "${volume_init_script}"; then
         die "Could not initialize Linux dependency volume ownership"
     fi
 
@@ -280,6 +280,7 @@ prepare_node_dependencies() {
         info "  ${root_relative} (${manager})"
         local install_status=0
         docker run --rm \
+            --interactive \
             --user "$(id -u):$(id -g)" \
             --privileged \
             --ipc=none \
@@ -287,7 +288,6 @@ prepare_node_dependencies() {
             --volume "${config_dir}:${config_mount}" \
             --volume "${data_dir}:${data_mount}" \
             --volume "${NODE_PROJECT_DIR}:${NODE_PROJECT_DIR}" \
-            --volume "${prep_script}:/usr/local/bin/agent-sandbox-node-prepare:ro" \
             "${NODE_DEPENDENCY_DOCKER_FLAGS[@]}" \
             --workdir "${install_root}" \
             --env "HOME=/home/agentuser" \
@@ -296,8 +296,8 @@ prepare_node_dependencies() {
             --env "AGENT_DATA_DIR=${data_mount}" \
             --entrypoint /bin/sh \
             "${image}" \
-            /usr/local/bin/agent-sandbox-node-prepare \
-            "${manager}" "${source_fingerprint}" "${image_id}" "${sentinel_root}" || install_status=$?
+            -s -- "${manager}" "${source_fingerprint}" "${image_id}" "${sentinel_root}" \
+            < "${prep_script}" || install_status=$?
 
         if [[ "$(node_hash_file "${lockfile}")" != "${lock_before}" ]]; then
             die "Strict dependency installation modified '${lockfile}'; refusing to start the agent"
