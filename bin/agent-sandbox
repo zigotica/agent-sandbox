@@ -263,7 +263,7 @@ cmd_init() {
     fi
 
     mkdir -p "${config_dir}/harnesses"
-    printf '{"harnesses":{}}\n' > "${config_file}"
+    printf '{"dependencies":{"node":{"mode":"strict"}},"harnesses":{}}\n' > "${config_file}"
 
     local builtin harness_script source_dir
     for builtin in pi opencode; do
@@ -621,7 +621,45 @@ cmd_test() {
         "--volume" "${run_wrapper}:/usr/local/bin/run-security-test.sh:ro"
     )
     ENTRYPOINT_OVERRIDE="bash"
+    SKIP_NODE_DEPENDENCIES=1
     run_container /usr/local/bin/run-security-test.sh
+}
+
+# ─── Command: deps ───────────────────────────────────────────────────────────
+
+cmd_deps() {
+    local action="${1:-list}"
+    local project_only=""
+    [[ "${2:-}" == "--project" ]] && project_only="1"
+
+    check_docker
+
+    local filters=("--filter" "label=agent-sandbox.kind=node-dependencies")
+    if [[ -n "${project_only}" ]]; then
+        filters+=("--filter" "label=agent-sandbox.project=$(node_dependency_project_hash "$(pwd)")")
+    fi
+
+    case "${action}" in
+        list)
+            docker volume ls "${filters[@]}" \
+                --format 'table {{.Name}}\t{{.Label "agent-sandbox.project-path"}}\t{{.Label "agent-sandbox.package"}}\t{{.Label "agent-sandbox.manager"}}'
+            ;;
+        clean)
+            local volumes=()
+            local volume
+            while IFS= read -r volume; do
+                [[ -n "${volume}" ]] && volumes+=("${volume}")
+            done < <(docker volume ls "${filters[@]}" --format '{{.Name}}')
+            if [[ ${#volumes[@]} -eq 0 ]]; then
+                info "No matching dependency volumes."
+                return
+            fi
+            docker volume rm "${volumes[@]}"
+            ;;
+        *)
+            die "Usage: agent-sandbox deps list [--project] | agent-sandbox deps clean [--project]"
+            ;;
+    esac
 }
 
 # ─── Command: upgrade ────────────────────────────────────────────────────────
@@ -678,6 +716,8 @@ Usage:
                                                Scaffold a new harness
   agent-sandbox unregister <name>              Unregister a harness
   agent-sandbox test <harness>                  Run security verification tests
+  agent-sandbox deps list [--project]           List isolated Node dependency volumes
+  agent-sandbox deps clean [--project]          Remove isolated Node dependency volumes
   agent-sandbox <harness> [args...]            Run a harness
   agent-sandbox <harness> build                Build the harness Docker image
   agent-sandbox <harness> upgrade              Upgrade the harness (if supported)
@@ -714,6 +754,9 @@ case "${command}" in
         ;;
     unregister)
         cmd_unregister "$@"
+        ;;
+    deps)
+        cmd_deps "$@"
         ;;
     -*)
         usage

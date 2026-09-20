@@ -37,6 +37,10 @@
   "engines": {
     "node": ">=20"
   },
+  "scripts": {
+    "test": "bash lib/tests/node-dependencies.sh",
+    "test:integration": "bash lib/tests/node-dependencies-integration.sh"
+  },
   "os": [
     "darwin",
     "linux"

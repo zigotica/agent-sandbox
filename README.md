@@ -41,6 +41,7 @@ This is not foolproof — no sandbox is — but it adds a meaningful layer of pr
 ```
 
 - **Project directory** is mounted at its real path (preserves pi's per-project sessions)
+- **Node dependencies** are installed for Linux in persistent Docker volumes mounted over every detected `node_modules`; host dependencies remain hidden and unchanged
 - **Config directory** (`$HOME/.pi` for pi, `$HOME/.config/opencode` for opencode) is mounted read-write so auth, sessions, and settings persist
 - **Data directory** (`$HOME/.local/share/opencode` for opencode) is mounted read-write so databases and session history persist
 - **HOME** is container-local — dotfiles, caches, and temp files never touch the host project
@@ -56,6 +57,7 @@ This is not foolproof — no sandbox is — but it adds a meaningful layer of pr
 | harness config dir (e.g. `$HOME/.pi`)                 | `/agent-config`                               | rw   | Config, credentials, settings     |
 | harness data dir (e.g. `$HOME/.local/share/opencode`) | `/agent-data`                                 | rw   | Sessions, databases, runtime data |
 | Current working directory                             | Same real path (e.g. `/Users/you/my-project`) | rw   | Project files                     |
+| Docker dependency volume                              | Each detected `<package>/node_modules`        | rw   | Linux-specific Node dependencies |
 
 All other runtime files (caches, temp files) go to container-local paths under `/home/agentuser/` and are lost when the container exits.
 
@@ -161,6 +163,11 @@ Custom harnesses registered with `agent-sandbox register` are scaffolded there t
 
 ```json
 {
+  "dependencies": {
+    "node": {
+      "mode": "strict"
+    }
+  },
   "harnesses": {
     "opencode": {
       "name": "opencode",
@@ -184,6 +191,21 @@ Custom harnesses registered with `agent-sandbox register` are scaffolded there t
     }
   }
 }
+```
+
+### Node dependency isolation
+
+Node dependency isolation defaults to `strict`. Before starting a harness, agent-sandbox discovers package roots throughout the project, associates each one with its nearest supported lockfile, and mounts persistent Linux-only Docker volumes over their `node_modules` directories. This masks dependencies installed by macOS without deleting or modifying them. Monorepo workspaces and independent nested services are handled separately.
+
+Strict mode runs the matching frozen install command in a short-lived preparation container: `npm ci`, `pnpm install --frozen-lockfile`, `yarn install --immutable`, or `bun install --frozen-lockfile`. Dependency build scripts run normally inside the isolated volume so native packages work; for pnpm, this is an explicit noninteractive all-builds policy and its package store is also kept inside the Linux volume. A fingerprint of the lockfile, package manifests, package-manager and Node versions, platform, and harness image allows later launches to reuse valid volumes. A missing lockfile, unavailable package manager, failed install, or modified lockfile stops startup; agent-sandbox never falls back to unlocked dependency resolution.
+
+To preserve the old behavior, set `dependencies.node.mode` to `disabled`. Dependency volumes persist until explicitly removed:
+
+```bash
+agent-sandbox deps list                    # all dependency volumes
+agent-sandbox deps list --project          # only the current project
+agent-sandbox deps clean                   # remove all dependency volumes
+agent-sandbox deps clean --project         # remove only the current project's volumes
 ```
 
 ### Version pinning
@@ -217,6 +239,8 @@ agent-sandbox init                 # Create config file with sensible defaults
 agent-sandbox doctor               # Check setup for problems
 agent-sandbox list                 # List all registered harnesses
 agent-sandbox test pi              # Run security verification tests
+agent-sandbox deps list --project  # List Linux dependency volumes for this project
+agent-sandbox deps clean --project # Remove Linux dependency volumes for this project
 
 agent-sandbox pi build             # Build (or rebuild) the pi Docker image
 agent-sandbox pi                   # Run pi in a sandboxed container
@@ -399,6 +423,8 @@ agent-sandbox test pi
 ```
 
 This mounts the test script from the install directory into the container — no need to copy it into your project. The test verifies: host secrets, SSH keys, cloud credentials, Docker socket, privilege escalation, network exfiltration tools, git access, filesystem boundaries (sibling directories, sensitive dirs), write access outside mounts, mount points, process visibility, and environment variable leakage.
+
+For repository development, `npm test` runs dependency discovery and volume-planning tests. `npm run test:integration` uses the local `agent-sandbox:pi` image to verify that a Linux dependency volume masks host `node_modules`, preserves host contents, and is reused on the next preparation.
 
 ## Development
 

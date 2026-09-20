@@ -32,6 +32,9 @@ info() {
     echo "$@"
 }
 
+# shellcheck source=lib/node-dependencies.sh
+source "${AGENT_SANDBOX_DIR}/lib/node-dependencies.sh"
+
 # ─── Config file ──────────────────────────────────────────────────────────────
 
 get_config_file_dir() {
@@ -40,6 +43,14 @@ get_config_file_dir() {
 
 get_config_file() {
     echo "${CONFIG_FILE}"
+}
+
+get_node_dependency_mode() {
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        echo "strict"
+        return
+    fi
+    jq -r '.dependencies.node.mode // "strict"' "${CONFIG_FILE}" 2>/dev/null || echo "strict"
 }
 
 get_harness_config_dir() {
@@ -326,6 +337,27 @@ run_container() {
     local project_dir
     project_dir="$(get_project_dir)"
 
+    local node_dependency_mode
+    node_dependency_mode="$(get_node_dependency_mode)"
+    case "${node_dependency_mode}" in
+        strict)
+            if [[ -z "${SKIP_NODE_DEPENDENCIES:-}" ]]; then
+                prepare_node_dependencies \
+                    "${project_dir}" \
+                    "${HARNESS_IMAGE}" \
+                    "${config_dir}" \
+                    "${data_dir}" \
+                    "${HARNESS_CONFIG_MOUNT_POINT}" \
+                    "${HARNESS_DATA_MOUNT_POINT}"
+            fi
+            ;;
+        disabled)
+            ;;
+        *)
+            die "Unsupported dependencies.node.mode '${node_dependency_mode}'. Expected 'strict' or 'disabled'."
+            ;;
+    esac
+
     local docker_flags=(
         "--rm"
         "--user" "$(id -u):$(id -g)"
@@ -341,6 +373,10 @@ run_container() {
         "--env" "TERM=${TERM:-xterm-256color}"
         "--env" "COLORTERM=${COLORTERM:-truecolor}"
     )
+
+    if [[ ${#NODE_DEPENDENCY_DOCKER_FLAGS[@]} -gt 0 ]]; then
+        docker_flags+=("${NODE_DEPENDENCY_DOCKER_FLAGS[@]}")
+    fi
 
     if declare -p HARNESS_ENV_VARS > /dev/null 2>&1 && [[ ${#HARNESS_ENV_VARS[@]} -gt 0 ]]; then
         local var
