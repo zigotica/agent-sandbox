@@ -236,6 +236,7 @@ Remove the `version` field to go back to installing latest on next build. Note: 
 
 ```bash
 agent-sandbox init                 # Create config file with sensible defaults
+agent-sandbox --version            # Show the installed agent-sandbox version
 agent-sandbox doctor               # Check setup for problems
 agent-sandbox list                 # List all registered harnesses
 agent-sandbox test pi              # Run security verification tests

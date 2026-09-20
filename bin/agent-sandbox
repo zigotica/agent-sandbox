@@ -709,6 +709,7 @@ usage() {
 agent-sandbox — Run AI coding harnesses inside Docker containers
 
 Usage:
+  agent-sandbox --version                      Show installed version
   agent-sandbox init                           Create config file
   agent-sandbox doctor                         Check setup for problems
   agent-sandbox list                           List registered harnesses
@@ -737,6 +738,9 @@ command="$1"
 shift
 
 case "${command}" in
+    --version|-V)
+        printf 'agent-sandbox %s\n' "$(get_agent_sandbox_version)"
+        ;;
     init)
         cmd_init "$@"
         ;;

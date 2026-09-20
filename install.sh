@@ -6,6 +6,7 @@ set -euo pipefail
 REPO="zigotica/agent-sandbox"
 INSTALL_DIR="${AGENT_SANDBOX_DIR:-$HOME/.agent-sandbox}"
 BRANCH="${AGENT_SANDBOX_BRANCH:-main}"
+VERSION=""
 
 echo "agent-sandbox installer"
 echo "======================="
@@ -60,6 +61,12 @@ echo "Installing to ${INSTALL_DIR}..."
 # Extract (strip top-level directory from archive)
 mkdir -p "${INSTALL_DIR}"
 tar -xzf "${TMPDIR}/agent-sandbox.tar.gz" -C "${INSTALL_DIR}" --strip-components=1
+
+if [ -n "${VERSION}" ]; then
+    printf '%s\n' "${VERSION#v}" > "${INSTALL_DIR}/VERSION"
+else
+    rm -f "${INSTALL_DIR}/VERSION"
+fi
 
 # Make binaries executable
 chmod +x "${INSTALL_DIR}/bin/agent-sandbox"

@@ -45,6 +45,30 @@ get_config_file() {
     echo "${CONFIG_FILE}"
 }
 
+get_agent_sandbox_version() {
+    local version=""
+
+    if [[ -f "${AGENT_SANDBOX_DIR}/VERSION" ]]; then
+        version="$(tr -d '[:space:]' < "${AGENT_SANDBOX_DIR}/VERSION")"
+    fi
+
+    if [[ -z "${version}" && -f "${AGENT_SANDBOX_DIR}/package.json" ]]; then
+        version="$(jq -r '.version // ""' "${AGENT_SANDBOX_DIR}/package.json" 2>/dev/null || true)"
+        [[ "${version}" == "0.0.0" ]] && version=""
+    fi
+
+    if [[ -z "${version}" && "${AGENT_SANDBOX_DIR}" =~ /Cellar/agent-sandbox/([^/]+)(/|$) ]]; then
+        version="${BASH_REMATCH[1]}"
+    fi
+
+    if [[ -z "${version}" && -d "${AGENT_SANDBOX_DIR}/.git" ]] && command -v git > /dev/null 2>&1; then
+        version="$(git -C "${AGENT_SANDBOX_DIR}" describe --tags --always --dirty 2>/dev/null || true)"
+    fi
+
+    version="${version#v}"
+    printf '%s\n' "${version:-unknown}"
+}
+
 get_node_dependency_mode() {
     if [[ ! -f "${CONFIG_FILE}" ]]; then
         echo "strict"

@@ -38,7 +38,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "bash lib/tests/node-dependencies.sh",
+    "test": "bash lib/tests/node-dependencies.sh && bash lib/tests/version.sh",
     "test:integration": "bash lib/tests/node-dependencies-integration.sh"
   },
   "os": [
